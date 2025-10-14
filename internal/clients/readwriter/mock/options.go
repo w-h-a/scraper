@@ -3,7 +3,7 @@ package mock
 import (
 	"context"
 
-	"github.com/w-h-a/scraper/internal/services/clients/readwriter"
+	"github.com/w-h-a/scraper/internal/clients/readwriter"
 )
 
 type existingLinksKey struct{}

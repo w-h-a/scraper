@@ -1,8 +1,8 @@
 package readwriter
 
 import (
-	"github.com/w-h-a/scraper/internal/services/clients/reader"
-	"github.com/w-h-a/scraper/internal/services/clients/writer"
+	"github.com/w-h-a/scraper/internal/clients/reader"
+	"github.com/w-h-a/scraper/internal/clients/writer"
 )
 
 type ReadWriterType string

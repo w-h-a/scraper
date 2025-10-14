@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/mmcdole/gofeed"
-	"github.com/w-h-a/scraper/internal/services/clients/scraper"
+	"github.com/w-h-a/scraper/internal/clients/scraper"
 )
 
 type feedScraper struct {

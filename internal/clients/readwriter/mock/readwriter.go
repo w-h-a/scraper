@@ -3,9 +3,9 @@ package mock
 import (
 	"context"
 
-	"github.com/w-h-a/scraper/internal/services/clients/reader"
-	"github.com/w-h-a/scraper/internal/services/clients/readwriter"
-	"github.com/w-h-a/scraper/internal/services/clients/writer"
+	"github.com/w-h-a/scraper/internal/clients/reader"
+	"github.com/w-h-a/scraper/internal/clients/readwriter"
+	"github.com/w-h-a/scraper/internal/clients/writer"
 )
 
 type mockReadWriter struct {

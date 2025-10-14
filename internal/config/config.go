@@ -4,8 +4,8 @@ import (
 	"os"
 	"sync"
 
-	"github.com/w-h-a/scraper/internal/services/clients/readwriter"
-	"github.com/w-h-a/scraper/internal/services/clients/scraper"
+	"github.com/w-h-a/scraper/internal/clients/readwriter"
+	"github.com/w-h-a/scraper/internal/clients/scraper"
 )
 
 var (

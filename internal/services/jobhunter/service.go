@@ -6,10 +6,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/w-h-a/scraper/internal/clients/reader"
+	"github.com/w-h-a/scraper/internal/clients/readwriter"
+	"github.com/w-h-a/scraper/internal/clients/scraper"
 	"github.com/w-h-a/scraper/internal/jobpost"
-	"github.com/w-h-a/scraper/internal/services/clients/reader"
-	"github.com/w-h-a/scraper/internal/services/clients/readwriter"
-	"github.com/w-h-a/scraper/internal/services/clients/scraper"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"

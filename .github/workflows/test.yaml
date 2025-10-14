@@ -1,0 +1,42 @@
+name: Test
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SHEETS_SERVICE_ACCOUNT_KEY: ${{ secrets.SHEETS_SERVICE_ACCOUNT_KEY }}
+  READ_WRITER_LOCATION: ${{ secrets.TEST_SHEET_ID }}
+  
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Inject Google Sheets Key File for Testing
+        run: |
+          KEY_PATH="$GITHUB_WORKSPACE/service_account_key.json"  
+        
+          echo "${{ env.SHEETS_SERVICE_ACCOUNT_KEY }}" | base64 -d > $KEY_PATH
+
+          chmod 600 $KEY_PATH          
+          echo "SHEETS_SERVICE_ACCOUNT_KEY_PATH=$KEY_PATH" >> $GITHUB_ENV
+
+      - name: Run Unit Tests
+        run: go clean -testcache && go test -v ./... 
+        
+      - name: Run Integration Tests
+        run: go clean -testcache && INTEGRATION=1 go test -v ./...

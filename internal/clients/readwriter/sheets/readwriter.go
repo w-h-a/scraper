@@ -6,9 +6,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/w-h-a/scraper/internal/services/clients/reader"
-	"github.com/w-h-a/scraper/internal/services/clients/readwriter"
-	"github.com/w-h-a/scraper/internal/services/clients/writer"
+	"github.com/w-h-a/scraper/internal/clients/reader"
+	"github.com/w-h-a/scraper/internal/clients/readwriter"
+	"github.com/w-h-a/scraper/internal/clients/writer"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"

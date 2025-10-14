@@ -8,10 +8,10 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/w-h-a/scraper/internal/services/clients/reader"
-	"github.com/w-h-a/scraper/internal/services/clients/readwriter"
-	"github.com/w-h-a/scraper/internal/services/clients/readwriter/sheets"
-	"github.com/w-h-a/scraper/internal/services/clients/scraper/feed"
+	"github.com/w-h-a/scraper/internal/clients/reader"
+	"github.com/w-h-a/scraper/internal/clients/readwriter"
+	"github.com/w-h-a/scraper/internal/clients/readwriter/sheets"
+	"github.com/w-h-a/scraper/internal/clients/scraper/feed"
 	"github.com/w-h-a/scraper/internal/services/jobhunter"
 )
 

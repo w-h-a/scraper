@@ -10,8 +10,8 @@ import (
 
 	"github.com/mmcdole/gofeed"
 	"github.com/stretchr/testify/require"
-	mockreadwriter "github.com/w-h-a/scraper/internal/services/clients/readwriter/mock"
-	mockscraper "github.com/w-h-a/scraper/internal/services/clients/scraper/mock"
+	mockreadwriter "github.com/w-h-a/scraper/internal/clients/readwriter/mock"
+	mockscraper "github.com/w-h-a/scraper/internal/clients/scraper/mock"
 	"github.com/w-h-a/scraper/internal/services/jobhunter"
 )
 

@@ -3,7 +3,7 @@ package sheets
 import (
 	"context"
 
-	"github.com/w-h-a/scraper/internal/services/clients/readwriter"
+	"github.com/w-h-a/scraper/internal/clients/readwriter"
 )
 
 type serviceAccountKeyPathKey struct{}

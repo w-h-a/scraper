@@ -32,7 +32,7 @@ jobs:
         uses: ietf-tools/semver-action@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          noNewCommitBehavior: silent 
+          noVersionBumpBehavior: current 
           
       - name: Create GitHub Release
         if: ${{ steps.tagger.outputs.next != steps.tagger.outputs.current }} 

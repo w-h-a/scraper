@@ -22,7 +22,7 @@ type Service struct {
 }
 
 func (s *Service) Start(ch chan struct{}) error {
-	tick := time.NewTicker(24 * 7 * time.Hour)
+	tick := time.NewTicker(24 * time.Hour)
 	defer tick.Stop()
 
 	var wg sync.WaitGroup

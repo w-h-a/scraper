@@ -22,10 +22,16 @@ type Service struct {
 }
 
 func (s *Service) Start(ch chan struct{}) error {
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		s.hunt()
+	}()
+
 	tick := time.NewTicker(24 * time.Hour)
 	defer tick.Stop()
-
-	var wg sync.WaitGroup
 
 huntLoop:
 	for {
@@ -37,19 +43,7 @@ huntLoop:
 
 			go func() {
 				defer wg.Done()
-
-				ctx, span := s.tracer.Start(context.Background(), "JobHuntCycle")
-
-				if err := s.ExecuteJobHunt(ctx); err != nil {
-					fmt.Printf("FATAL: job hunt failed: %v", err)
-					span.RecordError(err)
-					span.End()
-					return
-				}
-
-				fmt.Println("INFO: job hunt complete")
-				span.AddEvent("JobHuntCompleted")
-				span.End()
+				s.hunt()
 			}()
 		}
 	}
@@ -57,6 +51,20 @@ huntLoop:
 	wg.Wait()
 
 	return nil
+}
+
+func (s *Service) hunt() {
+	ctx, span := s.tracer.Start(context.Background(), "JobHuntCycle")
+	defer span.End()
+
+	if err := s.ExecuteJobHunt(ctx); err != nil {
+		fmt.Printf("FATAL: job hunt failed: %v", err)
+		span.RecordError(err)
+		return
+	}
+
+	fmt.Println("INFO: job hunt complete")
+	span.AddEvent("JobHuntCompleted")
 }
 
 func (s *Service) ExecuteJobHunt(ctx context.Context) error {

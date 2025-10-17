@@ -18,6 +18,8 @@ services:
       - ENV=dev
       - NAME=golang-job-scraper
       - VERSION=0.1.0-alpha.0
+      - LOGS_ADDRESS=
+      - LOGS_API_KEY_VALUE=
       - TRACES_ADDRESS=jaeger:4318
       - TRACES_API_KEY_VALUE=
       - READ_WRITER_LOCATION=

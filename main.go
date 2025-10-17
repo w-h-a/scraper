@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"sync"
@@ -15,9 +16,14 @@ import (
 	"github.com/w-h-a/scraper/internal/clients/scraper/feed"
 	"github.com/w-h-a/scraper/internal/config"
 	"github.com/w-h-a/scraper/internal/services/jobhunter"
+	"go.opentelemetry.io/contrib/bridges/otelslog"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	"go.opentelemetry.io/otel/exporters/stdout/stdoutlog"
+	globallog "go.opentelemetry.io/otel/log/global"
 	"go.opentelemetry.io/otel/propagation"
+	sdklog "go.opentelemetry.io/otel/sdk/log"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
@@ -29,12 +35,39 @@ func main() {
 	// config
 	config.New()
 
-	// setup tracer
-	tracer, err := initTracer(ctx)
+	// setup resource
+	res, err := resource.New(
+		ctx,
+		resource.WithAttributes(
+			semconv.ServiceName(config.Name()),
+			semconv.DeploymentEnvironment(config.Env()),
+			semconv.ServiceVersion(config.Version()),
+		),
+	)
 	if err != nil {
 		panic(err)
 	}
-	defer tracer.Shutdown(ctx)
+
+	// setup logger
+	lp, err := initLogger(ctx, res)
+	if err != nil {
+		panic(err)
+	}
+	defer lp.Shutdown(ctx)
+
+	logger := otelslog.NewLogger(
+		config.Name(),
+		otelslog.WithLoggerProvider(lp),
+	)
+
+	slog.SetDefault(logger)
+
+	// setup tp
+	tp, err := initTracer(ctx, res)
+	if err != nil {
+		panic(err)
+	}
+	defer tp.Shutdown(ctx)
 
 	// setup clients
 	rw, err := initReadWriter(ctx)
@@ -66,6 +99,7 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		slog.InfoContext(ctx, "starting job hunter service")
 		errCh <- hunter.Start(stop)
 	}()
 
@@ -76,10 +110,10 @@ func main() {
 	select {
 	case err := <-errCh:
 		if err != nil {
-			fmt.Printf("service exited unexpectedly: %v", err)
+			slog.ErrorContext(ctx, "service exited unexpectedly", "error", err)
 		}
 	case _ = <-signalCh:
-		fmt.Printf("initiating graceful shutdown")
+		slog.InfoContext(ctx, "initiating graceful shutdown")
 	}
 
 	// graceful shutdown
@@ -97,21 +131,43 @@ func main() {
 	case <-wait:
 	case <-time.After(30 * time.Second):
 	}
+
+	slog.InfoContext(ctx, "successfully shutdown")
 }
 
-func initTracer(ctx context.Context) (*sdktrace.TracerProvider, error) {
-	res, err := resource.New(
-		ctx,
-		resource.WithAttributes(
-			semconv.ServiceName(config.Name()),
-			semconv.DeploymentEnvironment(config.Env()),
-			semconv.ServiceVersion(config.Version()),
-		),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create resource for tracer: %v", err)
+func initLogger(ctx context.Context, res *resource.Resource) (*sdklog.LoggerProvider, error) {
+	var exporter sdklog.Exporter
+	var err error
+
+	if len(config.LogsAPIKeyValue()) > 0 {
+		exporter, err = otlploghttp.New(
+			ctx,
+			otlploghttp.WithEndpoint(config.LogsAddress()),
+			otlploghttp.WithHeaders(map[string]string{
+				config.LogsAPIKeyHeader(): config.LogsAPIKeyValue(),
+			}),
+		)
+	} else {
+		exporter, err = stdoutlog.New()
 	}
 
+	if err != nil {
+		return nil, fmt.Errorf("failed to create exporter for logs: %v", err)
+	}
+
+	loggerProvider := sdklog.NewLoggerProvider(
+		sdklog.WithResource(res),
+		sdklog.WithProcessor(
+			sdklog.NewBatchProcessor(exporter),
+		),
+	)
+
+	globallog.SetLoggerProvider(loggerProvider)
+
+	return loggerProvider, nil
+}
+
+func initTracer(ctx context.Context, res *resource.Resource) (*sdktrace.TracerProvider, error) {
 	exporterOpts := []otlptracehttp.Option{
 		otlptracehttp.WithEndpoint(config.TracesAddress()),
 	}

@@ -17,6 +17,9 @@ type config struct {
 	env                         string
 	name                        string
 	version                     string
+	logsAddress                 string
+	logsAPIKeyHeader            string
+	logsAPIKeyValue             string
 	tracesAddress               string
 	tracesAPIKeyHeader          string
 	tracesAPIKeyValue           string
@@ -32,6 +35,9 @@ func New() {
 			env:                         "dev",
 			name:                        "golang-job-scraper",
 			version:                     "0.1.0-alpha.0",
+			logsAddress:                 "api.honeycomb.io",
+			logsAPIKeyHeader:            "x-honeycomb-team",
+			logsAPIKeyValue:             "",
 			tracesAddress:               "api.honeycomb.io",
 			tracesAPIKeyHeader:          "x-honeycomb-team",
 			tracesAPIKeyValue:           "",
@@ -54,6 +60,21 @@ func New() {
 		version := os.Getenv("VERSION")
 		if len(version) > 0 {
 			instance.version = version
+		}
+
+		logsAddress := os.Getenv("LOGS_ADDRESS")
+		if len(logsAddress) > 0 {
+			instance.logsAddress = logsAddress
+		}
+
+		logsAPIKeyHeader := os.Getenv("LOGS_API_KEY_HEADER")
+		if len(logsAPIKeyHeader) > 0 {
+			instance.logsAPIKeyHeader = logsAPIKeyHeader
+		}
+
+		logsAPIKeyValue := os.Getenv("LOGS_API_KEY_VALUE")
+		if len(logsAPIKeyValue) > 0 {
+			instance.logsAPIKeyValue = logsAPIKeyValue
 		}
 
 		tracesAddress := os.Getenv("TRACES_ADDRESS")
@@ -123,6 +144,30 @@ func Version() string {
 	}
 
 	return instance.version
+}
+
+func LogsAddress() string {
+	if instance == nil {
+		panic("cfg is nil")
+	}
+
+	return instance.logsAddress
+}
+
+func LogsAPIKeyHeader() string {
+	if instance == nil {
+		panic("cfg is nil")
+	}
+
+	return instance.logsAPIKeyHeader
+}
+
+func LogsAPIKeyValue() string {
+	if instance == nil {
+		panic("cfg is nil")
+	}
+
+	return instance.logsAPIKeyValue
 }
 
 func TracesAddress() string {

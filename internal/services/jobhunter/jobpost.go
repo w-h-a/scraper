@@ -1,4 +1,4 @@
-package jobpost
+package jobhunter
 
 type JobPost struct {
 	DatePosted     string

@@ -105,6 +105,9 @@ jobs:
               -e ENV='prod' \
               -e NAME='$APP_NAME' \
               -e VERSION='${{ env.APP_VERSION }}' \
+              -e LOGS_ADDRESS='api.honeycomb.io' \
+              -e LOGS_API_KEY_HEADER='x-honeycomb-team' \
+              -e LOGS_API_KEY_VALUE='${{ secrets.HONEYCOMB_API_KEY }}' \
               -e TRACES_ADDRESS='api.honeycomb.io' \
               -e TRACES_API_KEY_HEADER='x-honeycomb-team' \
               -e TRACES_API_KEY_VALUE='${{ secrets.HONEYCOMB_API_KEY }}' \

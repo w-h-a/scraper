@@ -3,13 +3,13 @@ package jobhunter
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
 	"github.com/w-h-a/scraper/internal/clients/reader"
 	"github.com/w-h-a/scraper/internal/clients/readwriter"
 	"github.com/w-h-a/scraper/internal/clients/scraper"
-	"github.com/w-h-a/scraper/internal/jobpost"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -58,12 +58,12 @@ func (s *Service) hunt() {
 	defer span.End()
 
 	if err := s.ExecuteJobHunt(ctx); err != nil {
-		fmt.Printf("FATAL: job hunt failed: %v", err)
+		slog.WarnContext(ctx, "job hunt failed", "error", err)
 		span.RecordError(err)
 		return
 	}
 
-	fmt.Println("INFO: job hunt complete")
+	slog.InfoContext(ctx, "job hunt complete")
 	span.AddEvent("JobHuntCompleted")
 }
 
@@ -84,7 +84,7 @@ func (s *Service) ExecuteJobHunt(ctx context.Context) error {
 	span.SetAttributes(attribute.Int("deduplication.set.size", len(existingLinks)))
 
 	var wg sync.WaitGroup
-	jobChan := make(chan jobpost.JobPost, 100)
+	jobChan := make(chan JobPost, 100)
 
 	feedCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -100,7 +100,7 @@ func (s *Service) ExecuteJobHunt(ctx context.Context) error {
 		span.AddEvent("AllFeedsProcessed")
 	}()
 
-	var newJobs []jobpost.JobPost
+	var newJobs []JobPost
 
 	for job := range jobChan {
 		newJobs = append(newJobs, job)
@@ -118,7 +118,7 @@ func (s *Service) ExecuteJobHunt(ctx context.Context) error {
 	return s.readwriter.WriteBatch(ctx, rowsToAppend)
 }
 
-func (s *Service) processFeed(ctx context.Context, sourceName string, url string, existingLinks map[string]bool, jobChan chan<- jobpost.JobPost, wg *sync.WaitGroup) {
+func (s *Service) processFeed(ctx context.Context, sourceName string, url string, existingLinks map[string]bool, jobChan chan<- JobPost, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	ctx, span := s.tracer.Start(ctx, "processFeed")
@@ -155,7 +155,7 @@ func (s *Service) processFeed(ctx context.Context, sourceName string, url string
 			rawContent = item.Description
 		}
 
-		jobPost := jobpost.JobPost{
+		jobPost := JobPost{
 			DatePosted:     dateString,
 			Source:         sourceName,
 			JobTitle:       item.Title,
@@ -173,7 +173,7 @@ func (s *Service) processFeed(ctx context.Context, sourceName string, url string
 	span.AddEvent("FeedProcessingFinished", trace.WithAttributes(attribute.Int("items.added", newCount)))
 }
 
-func (s *Service) convertJobPostsToGenericRows(jobs []jobpost.JobPost) [][]any {
+func (s *Service) convertJobPostsToGenericRows(jobs []JobPost) [][]any {
 	rows := make([][]any, len(jobs))
 
 	for i, job := range jobs {

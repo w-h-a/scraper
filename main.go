@@ -8,7 +8,6 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
-	"time"
 
 	"github.com/w-h-a/scraper/internal/clients/readwriter"
 	"github.com/w-h-a/scraper/internal/clients/readwriter/sheets"
@@ -69,7 +68,11 @@ func main() {
 	}
 	defer tp.Shutdown(ctx)
 
-	// setup clients
+	// wait group & stop channels
+	var wg sync.WaitGroup
+	stopChannels := map[string]chan struct{}{}
+
+	// setup
 	rw, err := initReadWriter(ctx)
 	if err != nil {
 		panic(err)
@@ -80,59 +83,47 @@ func main() {
 		panic(err)
 	}
 
-	// wait group & stop channels
-	var wg sync.WaitGroup
-	stopChannels := map[string]chan struct{}{}
-	numServices := 0
-
-	// job hunter
 	hunter := jobhunter.New(s, rw)
-	numServices += 1
+	stopChannels["hunter"] = make(chan struct{})
 
-	// error chan
-	errCh := make(chan error, numServices)
+	// error and sig chans
+	errCh := make(chan error, len(stopChannels))
+	signalCh := make(chan os.Signal, 1)
+	signal.Notify(signalCh, syscall.SIGINT, syscall.SIGTERM)
 
-	// start job hunter
-	stop := make(chan struct{})
-	stopChannels["hunter"] = stop
-
+	// start
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		slog.InfoContext(ctx, "starting job hunter service")
-		errCh <- hunter.Start(stop)
+		errCh <- hunter.Run(stopChannels["hunter"])
 	}()
 
-	// block
-	signalCh := make(chan os.Signal, 1)
-	signal.Notify(signalCh, syscall.SIGINT, syscall.SIGTERM)
-
+	// block until shutdown
 	select {
 	case err := <-errCh:
 		if err != nil {
 			slog.ErrorContext(ctx, "service exited unexpectedly", "error", err)
+			panic(err)
 		}
 	case _ = <-signalCh:
 		slog.InfoContext(ctx, "initiating graceful shutdown")
+		for _, stop := range stopChannels {
+			close(stop)
+		}
 	}
 
-	// graceful shutdown
-	if stop, ok := stopChannels["hunter"]; ok {
-		close(stop)
+	wg.Wait()
+
+	close(errCh)
+
+	for err := range errCh {
+		if err != nil {
+			slog.ErrorContext(ctx, "error upon shutting down", "error", err)
+		}
 	}
 
-	wait := make(chan struct{})
-	go func() {
-		defer close(wait)
-		wg.Wait()
-	}()
-
-	select {
-	case <-wait:
-	case <-time.After(30 * time.Second):
-	}
-
-	slog.InfoContext(ctx, "successfully shutdown")
+	slog.InfoContext(ctx, "shutdown")
 }
 
 func initLogger(ctx context.Context, res *resource.Resource) (*sdklog.LoggerProvider, error) {

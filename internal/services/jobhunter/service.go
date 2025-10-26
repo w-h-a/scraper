@@ -2,6 +2,7 @@ package jobhunter
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -19,16 +20,56 @@ type Service struct {
 	scraper    scraper.Scraper
 	readwriter readwriter.ReadWriter
 	tracer     trace.Tracer
+	wg         sync.WaitGroup
+	exit       chan struct{}
+	isRunning  bool
+	mtx        sync.RWMutex
 }
 
-func (s *Service) Start(ch chan struct{}) error {
-	var wg sync.WaitGroup
+func (s *Service) Run(stop chan struct{}) error {
+	s.mtx.RLock()
 
-	wg.Add(1)
+	if s.isRunning {
+		s.mtx.RUnlock()
+		return errors.New("job hunter already running")
+	}
+
+	s.mtx.RUnlock()
+
+	if err := s.Start(); err != nil {
+		return fmt.Errorf("failed to start job hunter: %w", err)
+	}
+
+	<-stop
+
+	return s.Stop()
+}
+
+func (s *Service) Start() error {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	if s.isRunning {
+		return errors.New("job hunter already started")
+	}
+
+	s.isRunning = true
+	s.exit = make(chan struct{})
+
+	s.wg.Add(1)
 	go func() {
-		defer wg.Done()
+		defer s.wg.Done()
 		s.hunt()
 	}()
+
+	s.wg.Add(1)
+	go s.periodicHunt()
+
+	return nil
+}
+
+func (s *Service) periodicHunt() {
+	defer s.wg.Done()
 
 	tick := time.NewTicker(24 * time.Hour)
 	defer tick.Stop()
@@ -36,21 +77,16 @@ func (s *Service) Start(ch chan struct{}) error {
 huntLoop:
 	for {
 		select {
-		case <-ch:
+		case <-s.exit:
 			break huntLoop
 		case <-tick.C:
-			wg.Add(1)
-
+			s.wg.Add(1)
 			go func() {
-				defer wg.Done()
+				defer s.wg.Done()
 				s.hunt()
 			}()
 		}
 	}
-
-	wg.Wait()
-
-	return nil
 }
 
 func (s *Service) hunt() {
@@ -65,6 +101,46 @@ func (s *Service) hunt() {
 
 	slog.InfoContext(ctx, "job hunt complete")
 	span.AddEvent("JobHuntCompleted")
+}
+
+func (s *Service) Stop() error {
+	stopCtx, stopCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer stopCancel()
+	return s.stop(stopCtx)
+}
+
+func (s *Service) stop(ctx context.Context) error {
+	s.mtx.Lock()
+
+	if !s.isRunning {
+		s.mtx.Unlock()
+		return errors.New("job hunter not running")
+	}
+
+	close(s.exit)
+
+	s.isRunning = false
+
+	s.mtx.Unlock()
+
+	gracefulStopDone := make(chan struct{})
+
+	go func() {
+		s.wg.Wait()
+		close(gracefulStopDone)
+	}()
+
+	var stopErr error
+
+	select {
+	case <-gracefulStopDone:
+		slog.InfoContext(ctx, "job hunter stopped gracefully")
+	case <-ctx.Done():
+		slog.WarnContext(ctx, "job hunter stop timed out")
+		stopErr = ctx.Err()
+	}
+
+	return stopErr
 }
 
 func (s *Service) ExecuteJobHunt(ctx context.Context) error {
@@ -195,5 +271,8 @@ func New(scraper scraper.Scraper, readwriter readwriter.ReadWriter) *Service {
 		scraper:    scraper,
 		readwriter: readwriter,
 		tracer:     otel.Tracer("job-hunter"),
+		wg:         sync.WaitGroup{},
+		isRunning:  false,
+		mtx:        sync.RWMutex{},
 	}
 }

@@ -60,10 +60,8 @@ func TestJobHunter_ExecuteJobHunt_Success(t *testing.T) {
 	// 3. Assert
 	require.NoError(t, err)
 
-	// 2 feeds run concurrently.
-	// Each feed processes 3 jobs.
-	// Total jobs written = 3 + 3 = 6.
-	expectedWritten := 6
+	// 1 feed processes 3 jobs
+	expectedWritten := 3
 	require.Equal(t, expectedWritten, len(mockReadWriter.RowsWritten))
 }
 
@@ -98,11 +96,10 @@ func TestJobHunter_ExecuteJobHunt_Deduplication(t *testing.T) {
 	// 3. Assert
 	require.NoError(t, err)
 
-	// 2 feeds run concurrently.
-	// Each feed processes 5 jobs.
-	// 3 existing.
-	// Total jobs written = 2 + 2 = 4.
-	expectedWritten := 4
+	// 1 feed processes 5 jobs.
+	// 3 existing
+	// Total jobs written = 2.
+	expectedWritten := 2
 	require.Equal(t, expectedWritten, len(mockReadWriter.RowsWritten))
 }
 

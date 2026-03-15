@@ -81,7 +81,10 @@ huntLoop:
 }
 
 func (s *Service) hunt() {
-	ctx, span := s.tracer.Start(context.Background(), "JobHuntCycle")
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	ctx, span := s.tracer.Start(ctx, "JobHuntCycle")
 	defer span.End()
 
 	if err := s.ExecuteJobHunt(ctx); err != nil {

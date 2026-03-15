@@ -123,13 +123,13 @@ func (s *sheetsReadWriter) ClearBatch(ctx context.Context, opts ...writer.ClearB
 func (rw *sheetsReadWriter) configure(path string) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		detail := fmt.Sprintf("failed to read service account key: %v", err)
+		detail := fmt.Sprintf("failed to read service account key at %s: %v", path, err)
 		panic(detail)
 	}
 
 	config, err := google.JWTConfigFromJSON(data, sheets.SpreadsheetsScope)
 	if err != nil {
-		detail := fmt.Sprintf("failed to parse service account key: %v", err)
+		detail := fmt.Sprintf("failed to parse service account key at %s: %v", path, err)
 		panic(detail)
 	}
 
@@ -139,7 +139,7 @@ func (rw *sheetsReadWriter) configure(path string) {
 
 	sheetsClient, err := sheets.NewService(ctx, option.WithHTTPClient(client))
 	if err != nil {
-		detail := fmt.Sprintf("failed to retrieve sheets client: %v", err)
+		detail := fmt.Sprintf("failed to retrieve sheets client using key at %s: %v", path, err)
 		panic(detail)
 	}
 

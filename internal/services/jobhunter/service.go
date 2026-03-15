@@ -27,15 +27,6 @@ type Service struct {
 }
 
 func (s *Service) Run(stop chan struct{}) error {
-	s.mtx.RLock()
-
-	if s.isRunning {
-		s.mtx.RUnlock()
-		return errors.New("job hunter already running")
-	}
-
-	s.mtx.RUnlock()
-
 	if err := s.Start(); err != nil {
 		return fmt.Errorf("failed to start job hunter: %w", err)
 	}

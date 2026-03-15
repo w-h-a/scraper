@@ -130,13 +130,11 @@ func initLogger(ctx context.Context, res *resource.Resource) (*sdklog.LoggerProv
 	var exporter sdklog.Exporter
 	var err error
 
-	if len(config.LogsAPIKeyValue()) > 0 {
+	if len(config.LogsAddress()) > 0 {
 		exporter, err = otlploghttp.New(
 			ctx,
 			otlploghttp.WithEndpoint(config.LogsAddress()),
-			otlploghttp.WithHeaders(map[string]string{
-				config.LogsAPIKeyHeader(): config.LogsAPIKeyValue(),
-			}),
+			otlploghttp.WithInsecure(),
 		)
 	} else {
 		exporter, err = stdoutlog.New()
@@ -159,32 +157,27 @@ func initLogger(ctx context.Context, res *resource.Resource) (*sdklog.LoggerProv
 }
 
 func initTracer(ctx context.Context, res *resource.Resource) (*sdktrace.TracerProvider, error) {
-	exporterOpts := []otlptracehttp.Option{
-		otlptracehttp.WithEndpoint(config.TracesAddress()),
-	}
-
-	if len(config.TracesAPIKeyValue()) > 0 {
-		exporterOpts = append(exporterOpts, otlptracehttp.WithHeaders(map[string]string{
-			config.TracesAPIKeyHeader(): config.TracesAPIKeyValue(),
-		}))
-	} else {
-		exporterOpts = append(exporterOpts, otlptracehttp.WithInsecure())
-	}
-
-	exporter, err := otlptracehttp.New(ctx, exporterOpts...)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create exporter for traces: %v", err)
-	}
-
-	tracerProvider := sdktrace.NewTracerProvider(
+	opts := []sdktrace.TracerProviderOption{
 		sdktrace.WithResource(res),
 		sdktrace.WithSampler(sdktrace.AlwaysSample()),
-		sdktrace.WithSpanProcessor(
-			sdktrace.NewBatchSpanProcessor(
-				exporter,
-			),
-		),
-	)
+	}
+
+	if len(config.TracesAddress()) > 0 {
+		exporter, err := otlptracehttp.New(
+			ctx,
+			otlptracehttp.WithEndpoint(config.TracesAddress()),
+			otlptracehttp.WithInsecure(),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create exporter for traces: %v", err)
+		}
+
+		opts = append(opts, sdktrace.WithSpanProcessor(
+			sdktrace.NewBatchSpanProcessor(exporter),
+		))
+	}
+
+	tracerProvider := sdktrace.NewTracerProvider(opts...)
 
 	otel.SetTracerProvider(tracerProvider)
 	otel.SetTextMapPropagator(propagation.TraceContext{})

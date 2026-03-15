@@ -18,10 +18,6 @@ services:
       - ENV=dev
       - NAME=golang-job-scraper
       - VERSION=0.1.0-alpha.0
-      - LOGS_ADDRESS=api.honeycomb.io
-      - LOGS_API_KEY_VALUE=
-      - TRACES_ADDRESS=api.honeycomb.io
-      - TRACES_API_KEY_VALUE=
       - READ_WRITER_LOCATION=
       - SHEETS_SERVICE_ACCOUNT_KEY_PATH=/app/service_account_key.json
     volumes:

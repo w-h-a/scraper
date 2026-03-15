@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scraper
+  namespace: scraper
+  labels:
+    app: scraper
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: scraper
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: scraper
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: scraper
+          image: IMAGE_PLACEHOLDER
+          env:
+            - name: ENV
+              value: prod
+            - name: NAME
+              value: scraper
+            - name: VERSION
+              value: VERSION_PLACEHOLDER
+            - name: LOGS_ADDRESS
+              value: otel-collector.otel-collector.svc.cluster.local:4318
+            - name: TRACES_ADDRESS
+              value: otel-collector.otel-collector.svc.cluster.local:4318
+            - name: SCRAPER
+              value: feed
+            - name: READ_WRITER
+              value: sheets
+            - name: READ_WRITER_LOCATION
+              valueFrom:
+                secretKeyRef:
+                  name: scraper-secrets
+                  key: sheet-id
+            - name: SHEETS_SERVICE_ACCOUNT_KEY_PATH
+              value: /etc/scraper/secrets/service_account_key.json
+          volumeMounts:
+            - name: sheets-credentials
+              mountPath: /etc/scraper/secrets/service_account_key.json
+              subPath: service-account-key.json
+              readOnly: true
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          securityContext:
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+      volumes:
+        - name: sheets-credentials
+          secret:
+            secretName: scraper-secrets

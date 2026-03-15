@@ -4,14 +4,14 @@ on:
   push:
     branches: [main]
 
-concurrency: 
+concurrency:
   group: ${{ github.workflow }}
   cancel-in-progress: false
 
 env:
-  DOCKER_IMAGE_NAME: golang-job-scraper 
-  DOCKER_REPO_PATH: ${{ secrets.DOCKER_USERNAME }}/golang-job-scraper 
-  
+  DOCKER_IMAGE_NAME: golang-job-scraper
+  DOCKER_REPO_PATH: ${{ secrets.DOCKER_USERNAME }}/golang-job-scraper
+
 jobs:
   semver_tag:
     runs-on: ubuntu-latest
@@ -19,7 +19,7 @@ jobs:
       contents: write
     outputs:
       new_tag: ${{ steps.tagger.outputs.next }}
-      is_released: ${{ steps.tagger.outputs.next != steps.tagger.outputs.current }} 
+      is_released: ${{ steps.tagger.outputs.next != steps.tagger.outputs.current }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -32,10 +32,10 @@ jobs:
         uses: ietf-tools/semver-action@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          noVersionBumpBehavior: current 
-          
+          noVersionBumpBehavior: current
+
       - name: Create GitHub Release
-        if: ${{ steps.tagger.outputs.next != steps.tagger.outputs.current }} 
+        if: ${{ steps.tagger.outputs.next != steps.tagger.outputs.current }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tagger.outputs.next }}
@@ -47,7 +47,7 @@ jobs:
     if: needs.semver_tag.outputs.is_released == 'true'
     outputs:
       image_tag: ${{ needs.semver_tag.outputs.new_tag }}
-      app_version: ${{ needs.semver_tag.outputs.new_tag }} 
+      app_version: ${{ needs.semver_tag.outputs.new_tag }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -65,55 +65,30 @@ jobs:
           FULL_IMAGE_TAG=${{ env.DOCKER_REPO_PATH }}:${{ env.IMAGE_TAG }}
           docker build -t $FULL_IMAGE_TAG .
           docker push $FULL_IMAGE_TAG
-          echo "IMAGE_FULL_TAG=$FULL_IMAGE_TAG" >> $GITHUB_ENV 
 
   deploy:
     runs-on: ubuntu-latest
-    needs: [build_push]
-    if: needs.semver_tag.outputs.is_released == 'true'
+    needs: [semver_tag, build_push]
     steps:
-      - name: Set Deployment Variables
-        run: |
-          echo "IMAGE_TAG=${{ needs.build_push.outputs.image_tag }}" >> $GITHUB_ENV
-          echo "FULL_IMAGE_PATH=${{ env.DOCKER_REPO_PATH }}:${{ needs.build_push.outputs.image_tag }}" >> $GITHUB_ENV
-          echo "APP_VERSION=${{ needs.build_push.outputs.app_version }}" >> $GITHUB_ENV
-          echo "APP_NAME=${{ env.DOCKER_IMAGE_NAME }}" >> $GITHUB_ENV
-        
-      - name: Install SSH Key
-        uses: shimataro/ssh-key-action@v2
-        with:
-          key: ${{ secrets.DO_SSH_KEY }}
-          known_hosts: ${{ secrets.DO_HOST }} 
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-      - name: Deploy Container
+      - name: Configure kubectl
         run: |
-          IMAGE_PATH=${{ env.FULL_IMAGE_PATH }}
-          APP_NAME=${{ env.APP_NAME }} 
-          
-          ssh -o StrictHostKeyChecking=no ${{ secrets.DO_USERNAME }}@${{ secrets.DO_HOST }} "\
-            echo 'Starting deployment for $IMAGE_PATH...' && \
-            
-            docker stop $APP_NAME 2>/dev/null || true && \
-            docker rm $APP_NAME 2>/dev/null || true && \
-            
-            docker pull $IMAGE_PATH && \
-            
-            docker run -d \
-              --name $APP_NAME \
-              -v /etc/job-scraper/secrets/service_account_key.json:/app/service_account_key.json:ro \
-              \
-              -e ENV='prod' \
-              -e NAME='$APP_NAME' \
-              -e VERSION='${{ env.APP_VERSION }}' \
-              -e LOGS_ADDRESS='api.honeycomb.io' \
-              -e LOGS_API_KEY_HEADER='x-honeycomb-team' \
-              -e LOGS_API_KEY_VALUE='${{ secrets.HONEYCOMB_API_KEY }}' \
-              -e TRACES_ADDRESS='api.honeycomb.io' \
-              -e TRACES_API_KEY_HEADER='x-honeycomb-team' \
-              -e TRACES_API_KEY_VALUE='${{ secrets.HONEYCOMB_API_KEY }}' \
-              -e READ_WRITER_LOCATION='${{ secrets.PROD_SHEET_ID }}' \
-              -e SHEETS_SERVICE_ACCOUNT_KEY_PATH='/app/service_account_key.json' \
-              \
-              $IMAGE_PATH && \
-            
-            echo 'Deployment complete. Container is running and configured.'"
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
+
+      - name: Set image and version in manifests
+        env:
+          IMAGE_TAG: ${{ needs.build_push.outputs.image_tag }}
+          APP_VERSION: ${{ needs.build_push.outputs.app_version }}
+        run: |
+          sed -i "s|IMAGE_PLACEHOLDER|${{ env.DOCKER_REPO_PATH }}:${IMAGE_TAG}|" deploy/k8s/deployment.yaml
+          sed -i "s|VERSION_PLACEHOLDER|${APP_VERSION}|" deploy/k8s/deployment.yaml
+
+      - name: Apply manifests
+        run: kubectl apply -f deploy/k8s/
+
+      - name: Verify rollout
+        run: kubectl rollout status deployment/scraper -n scraper --timeout=120s

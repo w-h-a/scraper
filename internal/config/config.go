@@ -18,11 +18,7 @@ type config struct {
 	name                        string
 	version                     string
 	logsAddress                 string
-	logsAPIKeyHeader            string
-	logsAPIKeyValue             string
 	tracesAddress               string
-	tracesAPIKeyHeader          string
-	tracesAPIKeyValue           string
 	scraper                     string
 	readwriter                  string
 	readwriterLocation          string
@@ -35,12 +31,8 @@ func New() {
 			env:                         "dev",
 			name:                        "golang-job-scraper",
 			version:                     "0.1.0-alpha.0",
-			logsAddress:                 "api.honeycomb.io",
-			logsAPIKeyHeader:            "x-honeycomb-team",
-			logsAPIKeyValue:             "",
-			tracesAddress:               "api.honeycomb.io",
-			tracesAPIKeyHeader:          "x-honeycomb-team",
-			tracesAPIKeyValue:           "",
+			logsAddress:                 "",
+			tracesAddress:               "",
 			scraper:                     "feed",
 			readwriter:                  "sheets",
 			readwriterLocation:          "",
@@ -67,29 +59,9 @@ func New() {
 			instance.logsAddress = logsAddress
 		}
 
-		logsAPIKeyHeader := os.Getenv("LOGS_API_KEY_HEADER")
-		if len(logsAPIKeyHeader) > 0 {
-			instance.logsAPIKeyHeader = logsAPIKeyHeader
-		}
-
-		logsAPIKeyValue := os.Getenv("LOGS_API_KEY_VALUE")
-		if len(logsAPIKeyValue) > 0 {
-			instance.logsAPIKeyValue = logsAPIKeyValue
-		}
-
 		tracesAddress := os.Getenv("TRACES_ADDRESS")
 		if len(tracesAddress) > 0 {
 			instance.tracesAddress = tracesAddress
-		}
-
-		tracesAPIKeyHeader := os.Getenv("TRACES_API_KEY_HEADER")
-		if len(tracesAPIKeyHeader) > 0 {
-			instance.tracesAPIKeyHeader = tracesAPIKeyHeader
-		}
-
-		tracesAPIKeyValue := os.Getenv("TRACES_API_KEY_VALUE")
-		if len(tracesAPIKeyValue) > 0 {
-			instance.tracesAPIKeyValue = tracesAPIKeyValue
 		}
 
 		s := os.Getenv("SCRAPER")
@@ -154,44 +126,12 @@ func LogsAddress() string {
 	return instance.logsAddress
 }
 
-func LogsAPIKeyHeader() string {
-	if instance == nil {
-		panic("cfg is nil")
-	}
-
-	return instance.logsAPIKeyHeader
-}
-
-func LogsAPIKeyValue() string {
-	if instance == nil {
-		panic("cfg is nil")
-	}
-
-	return instance.logsAPIKeyValue
-}
-
 func TracesAddress() string {
 	if instance == nil {
 		panic("cfg is nil")
 	}
 
 	return instance.tracesAddress
-}
-
-func TracesAPIKeyHeader() string {
-	if instance == nil {
-		panic("cfg is nil")
-	}
-
-	return instance.tracesAPIKeyHeader
-}
-
-func TracesAPIKeyValue() string {
-	if instance == nil {
-		panic("cfg is nil")
-	}
-
-	return instance.tracesAPIKeyValue
 }
 
 func Scraper() string {

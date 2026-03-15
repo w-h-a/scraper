@@ -128,8 +128,8 @@ func TestJobHunter_ExecuteJobHunt_ScraperFails(t *testing.T) {
 	err := service.ExecuteJobHunt(ctx)
 
 	// 3. Assert
-	// handles gracefully
-	require.NoError(t, err)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), expectedErr.Error())
 }
 
 func TestJobHunter_ExecuteJobHunt_StoreReadFails(t *testing.T) {

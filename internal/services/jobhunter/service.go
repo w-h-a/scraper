@@ -155,25 +155,56 @@ func (s *Service) ExecuteJobHunt(ctx context.Context) error {
 
 	var wg sync.WaitGroup
 	jobChan := make(chan JobPost, 100)
+	errChan := make(chan error, len(RSSFeeds))
 
 	feedCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	for source, url := range RSSFeeds {
 		wg.Add(1)
-		go s.processFeed(feedCtx, source, url, existingLinks, jobChan, &wg)
+		go s.processFeed(feedCtx, source, url, existingLinks, jobChan, errChan, &wg)
 	}
 
 	go func() {
 		wg.Wait()
 		close(jobChan)
+		close(errChan)
 		span.AddEvent("AllFeedsProcessed")
 	}()
 
 	var newJobs []JobPost
-
 	for job := range jobChan {
 		newJobs = append(newJobs, job)
+	}
+
+	var feedErrors []error
+	for err := range errChan {
+		feedErrors = append(feedErrors, err)
+	}
+
+	feedsTotal := len(RSSFeeds)
+	feedsFailed := len(feedErrors)
+	feedsSucceeded := feedsTotal - feedsFailed
+
+	span.SetAttributes(
+		attribute.Int("feeds.succeeded", feedsSucceeded),
+		attribute.Int("feeds.failed", feedsFailed),
+	)
+
+	if feedsFailed > 0 && feedsFailed == feedsTotal {
+		err := fmt.Errorf("all %d feeds failed: %w", feedsTotal, errors.Join(feedErrors...))
+		span.RecordError(err)
+		return err
+	}
+
+	if feedsFailed > 0 {
+		partialErr := fmt.Errorf("%d of %d failed: %w", feedsFailed, feedsTotal, errors.Join(feedErrors...))
+		span.RecordError(partialErr)
+		slog.WarnContext(ctx, "some feeds failed",
+			"failed", feedsFailed,
+			"succeeded", feedsSucceeded,
+			"error", errors.Join(feedErrors...),
+		)
 	}
 
 	if len(newJobs) == 0 {
@@ -188,7 +219,15 @@ func (s *Service) ExecuteJobHunt(ctx context.Context) error {
 	return s.readwriter.WriteBatch(ctx, rowsToAppend)
 }
 
-func (s *Service) processFeed(ctx context.Context, sourceName string, url string, existingLinks map[string]bool, jobChan chan<- JobPost, wg *sync.WaitGroup) {
+func (s *Service) processFeed(
+	ctx context.Context,
+	sourceName string,
+	url string,
+	existingLinks map[string]bool,
+	jobChan chan<- JobPost,
+	errChan chan<- error,
+	wg *sync.WaitGroup,
+) {
 	defer wg.Done()
 
 	ctx, span := s.tracer.Start(ctx, "processFeed")
@@ -199,6 +238,7 @@ func (s *Service) processFeed(ctx context.Context, sourceName string, url string
 	feed, err := s.scraper.Scrape(ctx, url)
 	if err != nil {
 		span.RecordError(err)
+		errChan <- fmt.Errorf("feed %s: %w", sourceName, err)
 		return
 	}
 

@@ -88,7 +88,7 @@ func (s *Service) hunt() {
 	defer span.End()
 
 	if err := s.ExecuteJobHunt(ctx); err != nil {
-		slog.WarnContext(ctx, "job hunt failed", "error", err)
+		slog.ErrorContext(ctx, "job hunt failed", "error", err)
 		span.RecordError(err)
 		return
 	}
@@ -233,7 +233,10 @@ func (s *Service) processFeed(
 	ctx, span := s.tracer.Start(ctx, "processFeed")
 	defer span.End()
 
-	span.SetAttributes(attribute.String("feed.source", sourceName))
+	span.SetAttributes(
+		attribute.String("feed.source", sourceName),
+		attribute.String("feed.url", url),
+	)
 
 	feed, err := s.scraper.Scrape(ctx, url)
 	if err != nil {

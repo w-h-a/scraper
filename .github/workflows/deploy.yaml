@@ -9,8 +9,10 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  DOCKER_IMAGE_NAME: golang-job-scraper
   DOCKER_REPO_PATH: ${{ secrets.DOCKER_USERNAME }}/golang-job-scraper
+  OTEL_EXPORTER_OTLP_ENDPOINT: "https://api.honeycomb.io"
+  OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf"
+  OTEL_SERVICE_NAME: "cd"
 
 jobs:
   semver_tag:
@@ -21,21 +23,18 @@ jobs:
       new_tag: ${{ steps.tagger.outputs.next }}
       is_released: ${{ steps.tagger.outputs.next != steps.tagger.outputs.current }}
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           fetch-tags: true
 
-      - name: Calculate Semantic Version Bump
-        id: tagger
+      - id: tagger
         uses: ietf-tools/semver-action@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           noVersionBumpBehavior: current
 
-      - name: Create GitHub Release
-        if: ${{ steps.tagger.outputs.next != steps.tagger.outputs.current }}
+      - if: steps.tagger.outputs.next != steps.tagger.outputs.current
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tagger.outputs.next }}
@@ -47,34 +46,63 @@ jobs:
     if: needs.semver_tag.outputs.is_released == 'true'
     outputs:
       image_tag: ${{ needs.semver_tag.outputs.new_tag }}
-      app_version: ${{ needs.semver_tag.outputs.new_tag }}
+    env:
+      OTEL_EXPORTER_OTLP_HEADERS: "x-honeycomb-team=${{ secrets.HONEYCOMB_API_KEY }}"
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Login to Docker Hub
+      - name: Install otel-cli
+        run: |
+          curl -sL https://github.com/equinix-labs/otel-cli/releases/download/v0.4.5/otel-cli_0.4.5_linux_amd64.deb -o otel-cli.deb
+          sudo dpkg -i otel-cli.deb
+          TRACE_ID=$(echo -n "$GITHUB_RUN_ID" | md5sum | cut -c1-32)
+          echo "TRACE_ID=$TRACE_ID" >> "$GITHUB_ENV"
+
+      - name: Docker login
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build and Push Docker image
-        env:
-          IMAGE_TAG: ${{ needs.semver_tag.outputs.new_tag }}
+      - name: Docker build
         run: |
-          FULL_IMAGE_TAG=${{ env.DOCKER_REPO_PATH }}:${{ env.IMAGE_TAG }}
-          docker build -t $FULL_IMAGE_TAG .
-          docker push $FULL_IMAGE_TAG
+          otel-cli exec \
+            --name docker-build \
+            --force-trace-id $TRACE_ID \
+            --attrs "service=scraper,github.repository=$GITHUB_REPOSITORY,github.run_id=$GITHUB_RUN_ID,github.sha=$GITHUB_SHA,job=build_push,image_tag=${{ needs.semver_tag.outputs.new_tag }}" \
+            -- docker buildx build \
+              --tag ${{ env.DOCKER_REPO_PATH }}:${{ needs.semver_tag.outputs.new_tag }} \
+              --tag ${{ env.DOCKER_REPO_PATH }}:latest \
+              .
+
+      - name: Docker push
+        run: |
+          otel-cli exec \
+            --name docker-push \
+            --force-trace-id $TRACE_ID \
+            --attrs "service=scraper,github.repository=$GITHUB_REPOSITORY,github.run_id=$GITHUB_RUN_ID,github.sha=$GITHUB_SHA,job=build_push,image_tag=${{ needs.semver_tag.outputs.new_tag }}" \
+            -- bash -c '
+            docker push ${{ env.DOCKER_REPO_PATH }}:${{ needs.semver_tag.outputs.new_tag }} &&
+            docker push ${{ env.DOCKER_REPO_PATH }}:latest
+          '
 
   deploy:
     runs-on: ubuntu-latest
     needs: [semver_tag, build_push]
+    env:
+      OTEL_EXPORTER_OTLP_HEADERS: "x-honeycomb-team=${{ secrets.HONEYCOMB_API_KEY }}"
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - uses: digitalocean/action-doctl@v2                                                                                                                           
-        with:                                                                                                                                                        
+      - name: Install otel-cli
+        run: |
+          curl -sL https://github.com/equinix-labs/otel-cli/releases/download/v0.4.5/otel-cli_0.4.5_linux_amd64.deb -o otel-cli.deb
+          sudo dpkg -i otel-cli.deb
+          TRACE_ID=$(echo -n "$GITHUB_RUN_ID" | md5sum | cut -c1-32)
+          echo "TRACE_ID=$TRACE_ID" >> "$GITHUB_ENV"
+
+      - uses: digitalocean/action-doctl@v2
+        with:
           token: ${{ secrets.DO_TOKEN }}
 
       - name: Configure kubectl
@@ -83,13 +111,22 @@ jobs:
       - name: Set image and version in manifests
         env:
           IMAGE_TAG: ${{ needs.build_push.outputs.image_tag }}
-          APP_VERSION: ${{ needs.build_push.outputs.app_version }}
         run: |
           sed -i "s|IMAGE_PLACEHOLDER|${{ env.DOCKER_REPO_PATH }}:${IMAGE_TAG}|" deploy/k8s/deployment.yaml
-          sed -i "s|VERSION_PLACEHOLDER|${APP_VERSION}|" deploy/k8s/deployment.yaml
+          sed -i "s|VERSION_PLACEHOLDER|${IMAGE_TAG}|" deploy/k8s/deployment.yaml
 
       - name: Apply manifests
-        run: kubectl apply -f deploy/k8s/
+        run: |
+          otel-cli exec \
+            --name kubectl-apply \
+            --force-trace-id $TRACE_ID \
+            --attrs "service=scraper,github.repository=$GITHUB_REPOSITORY,github.run_id=$GITHUB_RUN_ID,github.sha=$GITHUB_SHA,job=deploy,image_tag=${{ needs.build_push.outputs.image_tag }}" \
+            -- kubectl apply -f deploy/k8s/
 
       - name: Verify rollout
-        run: kubectl rollout status deployment/scraper -n scraper --timeout=120s
+        run: |
+          otel-cli exec \
+            --name kubectl-rollout \
+            --force-trace-id $TRACE_ID \
+            --attrs "service=scraper,github.repository=$GITHUB_REPOSITORY,github.run_id=$GITHUB_RUN_ID,github.sha=$GITHUB_SHA,job=deploy,image_tag=${{ needs.build_push.outputs.image_tag }}" \
+            -- kubectl rollout status deployment/scraper -n scraper --timeout=120s
